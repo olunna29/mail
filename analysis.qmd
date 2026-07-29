@@ -1,0 +1,81 @@
+---
+title: "Mail"
+author: "Oluchi Nnadi"
+format: html
+execute:
+  echo: false
+---
+
+```{r}
+#| message: false
+library(tidyverse)
+library(primer.data)
+library(tidymodels)
+library(broom)
+library(gt)
+library(marginaleffects)
+```
+
+```{r}
+#| cache: true
+x <- mail |>
+  select(treatment, applied_mail, party, age, sex) |>
+  drop_na() |>
+  mutate(applied_mail = as.factor(applied_mail),
+         treatment = fct_relevel(treatment, "No Postcard"))
+```
+
+```{r}
+x |>
+  group_by(party, treatment) |>
+  summarize(share = mean(applied_mail == "Yes"), .groups = "drop") |>
+  ggplot(aes(x = treatment, y = share)) +
+  geom_col() +
+  facet_wrap(~ party) +
+  scale_y_continuous(labels = scales::percent) +
+  labs(y = "Percentage")
+```
+
+```{r}
+#| cache: true
+fit_mail <- logistic_reg(engine = "glm") |>
+  fit(applied_mail ~ treatment + party + age + sex, data = x)
+```
+
+```{r}
+tidy(fit_mail, conf.int = TRUE) |>
+  gt() |>
+  tab_header(
+    title = "Logistic Regression Model of Mail Ballot Applications"
+  ) |>
+  tab_source_note(
+    source_note = "Data source: 2020 Philadelphia mail ballot field experiment"
+  ) |>
+  fmt_number(
+    columns = where(is.numeric),
+    decimals = 3
+  )
+```
+
+```{r}
+comps <- avg_comparisons(extract_fit_engine(fit_mail),
+                         variables = "treatment") |>
+  as_tibble()
+
+comps |>
+  ggplot(aes(x = estimate, y = contrast)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_pointrange(aes(xmin = conf.low, xmax = conf.high), color = "midnightblue") +
+  scale_x_continuous(labels = scales::percent_format(accuracy = 0.1)) +
+  labs(
+    title = "Effect of Postcard Treatments on Mail Ballot Applications",
+    subtitle = "Both Self and Neighborhood postcards slightly increase mail ballot application rates",
+    caption = "Data source: 2020 Philadelphia mail ballot field experiment",
+    x = "Percentage Points",
+    y = NULL
+  ) +
+  theme_minimal()
+```
+
+
+Summary: In recent years, candidates have turned to mail ballots to increase voting convenience and voter turnout; however, the number of people utilizing this service has been low. Using data from a 2020 field experiment, we plan to create a model that will measure the average causal effect of sending a postcard (that says ‘safer for you’ or ‘safer for your neighborhood ) relative to no postcard on the share of registered Philadelphia voters who apply for a mail ballot. However, there could be some bias introduced to our model because the data comes from the COVID pandemic era when mail ballots were not only brand new, but the words 'safer for you' also had a different meaning. We modeled the binary variable of applying for a mail ballot as logit function of age, gender, age, and postcard treatment. We found that the 'self' postcard and 'neighborhood' postcard raised the probability of applying by 0.41 and 0.48 percentage points respectively; however, both intervals included 0, so it's possible that there was no effect. Although, this estimate could be wrong because sending a postcard doesn't ensure that the person received it or that it influenced their decision on applying for a mail ballot. Additionally, because we dropped over 200,000 entries that didn't have a specified gender, we could be missing a significant portion of the population that could have impacted our findings.
